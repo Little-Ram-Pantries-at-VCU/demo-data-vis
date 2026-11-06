@@ -1,24 +1,21 @@
 {
-<<<<<<< HEAD
-  "generated_at": "2026-11-06T18:16:41Z",
-=======
-  "generated_at": "2026-11-06T18:14:02Z",
->>>>>>> 43e0bcb0ee5562bd56bd017f112232d707ee705e
+  "generated_at": "2026-11-06T18:37:21Z",
   "bbox": {
-    "min_lat": 37.536,
-    "max_lat": 37.557,
-    "min_lon": -77.458,
-    "max_lon": -77.424
+    "min_lat": 37.4656932815261,
+    "max_lat": 37.621603430376794,
+    "min_lon": -77.64338009547969,
+    "max_lon": -77.42846848564051
   },
   "bbox_name": "VCU Monroe Park + MCV campuses",
+  "bbox_auto": true,
   "grid": {
     "cell_size_m": 25,
-    "origin_lat": 37.536,
-    "origin_lon": -77.458,
+    "origin_lat": 37.4656932815261,
+    "origin_lon": -77.64338009547969,
     "dlat": 0.0002245777937477542,
-    "dlon": 0.0002832506001978837,
-    "nx": 121,
-    "ny": 94
+    "dlon": 0.00028323976534655655,
+    "nx": 759,
+    "ny": 695
   },
   "campus_ssids": {
     "SafeNet": "VCU SafeNet Wireless",
@@ -54,27 +51,27 @@
         "export_date": "2026-11-06",
         "area": "campus",
         "device": "wigle-phone-unknown",
-        "rows_kept": 34790
+        "rows_kept": 48773
       }
     ],
     "rows_read": 49010,
     "duplicates": 237,
-    "outside_bbox": 13983,
+    "outside_bbox": 0,
     "bad_rows": 0,
-    "kept": 34790
+    "kept": 48773
   },
-  "n_fixes": 3814,
+  "n_fixes": 6426,
   "n_fixes_with_campus": 1108,
-  "n_cells_surveyed": 887,
-  "n_buildings": 0,
+  "n_cells_surveyed": 2325,
+  "n_buildings": 3961,
   "perimeter_m": 30,
-  "n_cells_total": 11374,
+  "n_cells_total": 527505,
   "cells_by_tier": {
-    "none": 514,
-    "good": 128,
-    "fair": 152,
-    "excellent": 77,
-    "poor": 16
+    "none": 1941,
+    "good": 127,
+    "fair": 160,
+    "excellent": 82,
+    "poor": 15
   },
   "date_range": [
     "2026-09-14",

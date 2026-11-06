@@ -19,6 +19,8 @@
   };
 
   let SUMMARY, FIXES, GRID, BUILDINGS = null;
+  let lastSurveyed = new Set();
+  const NODATA_MAX_CELLS = 40000; // beyond this the gray layer is skipped until you zoom in
   let map, canvas, cellLayer, noDataLayer, fixLayer, buildingLayer;
   const cellShapes = new Map(); // "ix,iy" -> L.Rectangle (reused across re-renders)
 
@@ -47,19 +49,25 @@
     map = L.map("map", { preferCanvas: true });
     map.fitBounds([[b.min_lat, b.min_lon], [b.max_lat, b.max_lon]]);
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    // OpenStreetMap standard tiles: free, no key.  Please keep the attribution.
+    // (CARTO's basemaps now require an API key.)
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
-    L.rectangle([[b.min_lat, b.min_lon], [b.max_lat, b.max_lon]],
-      { color: "#52514e", weight: 1, dashArray: "4 4", fill: false, interactive: false }).addTo(map);
+    if (!SUMMARY.bbox_auto) {
+      L.rectangle([[b.min_lat, b.min_lon], [b.max_lat, b.max_lon]],
+        { color: "#52514e", weight: 1, dashArray: "4 4", fill: false, interactive: false }).addTo(map);
+    }
 
     canvas = L.canvas({ padding: 0.3 });
     noDataLayer = L.layerGroup().addTo(map);
     cellLayer = L.layerGroup().addTo(map);
     buildingLayer = L.layerGroup().addTo(map);
     fixLayer = L.layerGroup();
+    // Unsurveyed cells are drawn only for the visible viewport, so any study-area size is fine.
+    map.on("moveend", () => renderNoData(lastSurveyed));
 
     document.getElementById("cell-size").textContent = GRID.cell_size_m;
     document.getElementById("subtitle").textContent =
@@ -75,9 +83,9 @@
       ssid.append(new Option(`${label} (${SUMMARY.campus_ssids[label]})`, label));
     }
     const from = el("f-from"), to = el("f-to");
-    for (const d of SUMMARY.dates) { from.append(new Option(d, d)); to.append(new Option(d, d)); }
-    from.value = SUMMARY.dates[0];
-    to.value = SUMMARY.dates[SUMMARY.dates.length - 1];
+    const first = SUMMARY.dates[0], last = SUMMARY.dates[SUMMARY.dates.length - 1];
+    from.min = to.min = first; from.max = to.max = last;
+    from.value = first; to.value = last;
 
     const devs = el("f-devices");
     for (const d of SUMMARY.devices) {
@@ -128,11 +136,12 @@
   // ------------------------------------------------------------------ filtering + aggregation
   function currentFilter() {
     const devs = [...document.querySelectorAll("#f-devices input:checked")].map(c => c.value);
+    // An empty/cleared date input means "no bound".
     return {
       ssid: el("f-ssid").value,
       band: el("f-band").value,
-      from: el("f-from").value,
-      to: el("f-to").value,
+      from: el("f-from").value || "0000-00-00",
+      to: el("f-to").value || "9999-99-99",
       min: Math.max(1, parseInt(el("f-min").value, 10) || 1),
       devices: new Set(devs),
     };
@@ -229,17 +238,8 @@
       cellLayer.addLayer(shape);
     }
 
-    noDataLayer.clearLayers();
-    if (el("l-nodata").checked) {
-      for (let ix = 0; ix < GRID.nx; ix++) {
-        for (let iy = 0; iy < GRID.ny; iy++) {
-          if (surveyed.has(ix + "," + iy)) continue;
-          noDataLayer.addLayer(L.rectangle(cellBounds(ix, iy), {
-            renderer: canvas, stroke: false, fillColor: TIER_COLORS.nodata, fillOpacity: 0.18, interactive: false,
-          }));
-        }
-      }
-    }
+    lastSurveyed = surveyed;
+    renderNoData(surveyed);
 
     fixLayer.clearLayers();
     if (el("l-fixes").checked) {
@@ -321,6 +321,26 @@
     });
   }
 
+  /** Draw unsurveyed cells, but only those inside the current viewport. */
+  function renderNoData(surveyed) {
+    noDataLayer.clearLayers();
+    if (!el("l-nodata").checked || !map) return;
+    const vb = map.getBounds();
+    const ix0 = Math.max(0, Math.floor((vb.getWest() - GRID.origin_lon) / GRID.dlon));
+    const ix1 = Math.min(GRID.nx - 1, Math.ceil((vb.getEast() - GRID.origin_lon) / GRID.dlon));
+    const iy0 = Math.max(0, Math.floor((vb.getSouth() - GRID.origin_lat) / GRID.dlat));
+    const iy1 = Math.min(GRID.ny - 1, Math.ceil((vb.getNorth() - GRID.origin_lat) / GRID.dlat));
+    if ((ix1 - ix0 + 1) * (iy1 - iy0 + 1) > NODATA_MAX_CELLS) return; // zoomed too far out
+    for (let ix = ix0; ix <= ix1; ix++) {
+      for (let iy = iy0; iy <= iy1; iy++) {
+        if (surveyed.has(ix + "," + iy)) continue;
+        noDataLayer.addLayer(L.rectangle(cellBounds(ix, iy), {
+          renderer: canvas, stroke: false, fillColor: TIER_COLORS.nodata, fillOpacity: 0.18, interactive: false,
+        }));
+      }
+    }
+  }
+
   function styleFor(c) {
     const base = { renderer: canvas, weight: 0.5, color: "#ffffff", opacity: 0.8, fillOpacity: 0.75 };
     if (c.tier === "none") {
@@ -345,19 +365,24 @@
     const total = GRID.nx * GRID.ny;
     document.querySelectorAll("#legend .count").forEach(span => {
       const t = span.dataset.tier;
-      span.textContent = t === "nodata" ? (total - cells.length).toLocaleString() : (byTier[t] || 0).toLocaleString();
+      // In auto-fit mode the extent is just "where the data happens to reach", so an unsurveyed count means little.
+      span.textContent = t === "nodata"
+        ? (SUMMARY.bbox_auto ? "" : (total - cells.length).toLocaleString())
+        : (byTier[t] || 0).toLocaleString();
     });
 
     const withSig = cells.filter(c => c.median !== null);
     const strong = cells.filter(c => c.tier === "excellent" || c.tier === "good").length;
-    const stats = [
-      ["Grid cells in study area", total.toLocaleString()],
-      ["Cells surveyed", `${cells.length.toLocaleString()} (${pct(cells.length, total)})`],
+    const stats = SUMMARY.bbox_auto
+      ? [["Cells surveyed", cells.length.toLocaleString()]]
+      : [["Grid cells in study area", total.toLocaleString()],
+         ["Cells surveyed", `${cells.length.toLocaleString()} (${pct(cells.length, total)})`]];
+    stats.push(
       ["…with campus Wi‑Fi observed", `${withSig.length.toLocaleString()} (${pct(withSig.length, cells.length)})`],
       ["…good or excellent", `${strong.toLocaleString()} (${pct(strong, withSig.length)})`],
       ["…no campus Wi‑Fi observed", `${(byTier.none || 0).toLocaleString()} (${pct(byTier.none || 0, cells.length)})`],
       ["Overall median RSSI", withSig.length ? `${median(withSig.map(c => c.median))} dBm` : "—"],
-    ];
+    );
     const dl = el("stats");
     dl.innerHTML = "";
     for (const [k, v] of stats) {

@@ -1,6 +1,8 @@
 {
-  "_comment": "Only observations inside this box are kept. Covers VCU Monroe Park campus (west) and MCV campus (east). Edit and re-run scripts/build.py (or push) to change the study area.",
+  "_comment": "Study area. With \"auto\": true the box is fitted to all raw data (plus pad_m metres) so nothing is cut off. Set \"auto\": false to use the fixed corners below instead — e.g. to drop a commute and keep the map on campus.",
   "name": "VCU Monroe Park + MCV campuses",
+  "auto": true,
+  "pad_m": 50,
   "min_lat": 37.536,
   "max_lat": 37.557,
   "min_lon": -77.458,

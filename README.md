@@ -7,7 +7,7 @@ campus coverage.
 
 **Live site:** https://little-ram-pantries-at-vcu.github.io/demo-data-vis/
 
-No server, no build tools, no API keys: Leaflet + OpenStreetMap/CARTO tiles in the browser,
+No server, no build tools, no API keys: Leaflet + OpenStreetMap tiles in the browser,
 a 150-line Python script to turn raw CSVs into GeoJSON, and a GitHub Action that runs it.
 
 ## Repository layout
@@ -21,7 +21,7 @@ demo-data-vis/
 │   ├── raw/                # team drops WiGLE CSV exports here, one per session
 │   │   ├── 2026-10-21_monroe-park.csv
 │   │   └── 2026-11-04_mcv.csv
-│   ├── campus_bbox.json    # the filter box
+│   ├── campus_bbox.json    # the filter box (auto-fit to data by default)
 │   ├── buildings.geojson   # OSM building footprints (fetched once by scripts/fetch_buildings.py)
 │   └── processed/          # generated — never hand-edited
 │       ├── fixes.geojson   # one point per GPS fix: best VCU RSSI, SSIDs seen, date
@@ -94,7 +94,10 @@ unnamed ones show as *(unnamed university)* — editing the name in OpenStreetMa
 
 ## Changing the study area or thresholds
 
-- Study area: edit `data/campus_bbox.json` and push.
+- Study area: `data/campus_bbox.json`. By default `"auto": true` fits the box to all the data
+  (plus `pad_m`), so nothing is ever cut off. Set `"auto": false` to use the fixed corners
+  instead — useful to drop a commute and keep the map and the gray "unsurveyed" layer on campus.
+  The current corners cover Monroe Park + MCV.
 - Campus SSID list, grid size, RSSI tiers: edit the constants at the top of
   `scripts/build.py`. The map reads them from `summary.json`, so nothing else needs changing.
 

@@ -104,12 +104,32 @@ def band_of(freq_mhz: int) -> str:
 
 
 def load_bbox() -> dict:
+    """Return the study-area box.  With "auto": true the box is fitted to the
+    data (plus "pad_m" metres) instead of using the fixed corners."""
     with open(BBOX_PATH) as f:
         b = json.load(f)
+    if b.get("auto"):
+        return {"auto": True, "pad_m": float(b.get("pad_m", 50)), "name": b.get("name"),
+                "min_lat": -90, "max_lat": 90, "min_lon": -180, "max_lon": 180}
     for k in ("min_lat", "max_lat", "min_lon", "max_lon"):
         if k not in b:
-            sys.exit(f"campus_bbox.json is missing '{k}'")
+            sys.exit(f"campus_bbox.json is missing '{k}' (or set \"auto\": true)")
+    b["auto"] = False
     return b
+
+
+def fit_bbox_to_data(bbox: dict, observations) -> dict:
+    """For auto mode: shrink the world box to the data extent plus padding."""
+    if not bbox.get("auto"):
+        return bbox
+    lats = [o["lat"] for o in observations]; lons = [o["lon"] for o in observations]
+    if not lats:
+        sys.exit("No observations to fit the study area to")
+    mid_lat = (min(lats) + max(lats)) / 2
+    pad_lat = bbox["pad_m"] / 111_320.0
+    pad_lon = bbox["pad_m"] / (111_320.0 * math.cos(math.radians(mid_lat)))
+    return dict(bbox, min_lat=min(lats) - pad_lat, max_lat=max(lats) + pad_lat,
+                min_lon=min(lons) - pad_lon, max_lon=max(lons) + pad_lon)
 
 
 def read_raw(bbox: dict):
@@ -407,6 +427,10 @@ def main():
     print(f"  rows read {stats['rows_read']}, duplicates {stats['duplicates']}, "
           f"outside bbox {stats['outside_bbox']}, bad {stats['bad_rows']}, kept {stats['kept']}")
 
+    bbox = fit_bbox_to_data(bbox, observations)
+    if bbox.get("auto"):
+        print(f"  auto study area: lat {bbox['min_lat']:.5f}..{bbox['max_lat']:.5f}, "
+              f"lon {bbox['min_lon']:.5f}..{bbox['max_lon']:.5f}")
     fixes = build_fixes(observations)
     g = grid_meta(bbox)
     grid = build_grid(fixes, g)
@@ -447,6 +471,7 @@ def main():
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "bbox": {k: bbox[k] for k in ("min_lat", "max_lat", "min_lon", "max_lon")},
         "bbox_name": bbox.get("name"),
+        "bbox_auto": bool(bbox.get("auto")),
         "grid": g,
         "campus_ssids": CAMPUS_SSIDS,
         "tiers": TIERS,

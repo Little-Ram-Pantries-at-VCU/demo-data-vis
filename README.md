@@ -22,10 +22,13 @@ demo-data-vis/
 │   │   ├── 2026-10-21_monroe-park.csv
 │   │   └── 2026-11-04_mcv.csv
 │   ├── campus_bbox.json    # the filter box
+│   ├── buildings.geojson   # OSM building footprints (fetched once by scripts/fetch_buildings.py)
 │   └── processed/          # generated — never hand-edited
 │       ├── fixes.geojson   # one point per GPS fix: best VCU RSSI, SSIDs seen, date
-│       └── grid.geojson    # ~25 m hex/grid cells: median RSSI, sample count
+│       ├── grid.geojson    # ~25 m hex/grid cells: median RSSI, sample count
+│       └── buildings.geojson  # footprints + per-building perimeter signal stats
 ├── scripts/build.py        # raw/*.csv → processed/*.geojson (dedupes, filters bbox)
+├── scripts/fetch_buildings.py    # Overpass query → data/buildings.geojson
 └── .github/workflows/build.yml   # runs build.py on any push to data/raw/, commits output
 ```
 
@@ -52,6 +55,7 @@ Full details, the column dictionary and the caveats are in [`data/README.md`](da
 | Red dashed squares | Cells the team walked through where WiGLE logged **no** campus network — candidate dead spots (see caveat in `data/README.md`). |
 | Gray squares | Cells inside the study area that have never been surveyed. The team's to-do list. |
 | Dots (toggle) | Individual GPS fixes, colored the same way, with a tooltip of what was seen. |
+| Building outlines | OpenStreetMap footprints, outlined in the tier color of the median signal from all fixes inside or within 30 m of the footprint. Hollow gray = no nearby fixes yet. The side panel ranks surveyed buildings weakest-first. |
 
 Filters: network, band (2.4 / 5 GHz), date range, device, minimum fixes per cell. The side
 panel shows coverage statistics for the current filters and a list of the weakest surveyed
@@ -73,6 +77,21 @@ python3 -m http.server 8000       # then open http://localhost:8000
    (so the Action can commit the regenerated files).
 3. Push. The first Action run populates `data/processed/`; Pages goes live a minute later.
 
+## Building footprints
+
+`data/buildings.geojson` comes from OpenStreetMap via the Overpass API and is committed so the
+site never depends on Overpass at build time. The Action fetches it automatically the first time
+it is missing; to refresh it (new buildings, bigger study area) run the workflow manually with
+**Re-download building footprints** ticked, or locally:
+
+```bash
+python3 scripts/fetch_buildings.py && python3 scripts/build.py
+```
+
+Buildings are matched to fixes by distance (`PERIMETER_M` in `scripts/build.py`, 30 m), so a
+building's score is really "the sidewalk around it". OSM names many VCU buildings but not all;
+unnamed ones show as *(unnamed university)* — editing the name in OpenStreetMap fixes it for everyone.
+
 ## Changing the study area or thresholds
 
 - Study area: edit `data/campus_bbox.json` and push.
@@ -81,7 +100,6 @@ python3 -m http.server 8000       # then open http://localhost:8000
 
 ## Roadmap ideas
 
-- VCU building footprints from OpenStreetMap as an outline layer.
-- Per-building summary (which buildings' perimeters are weakest).
+- Per-building *indoor* readings (a different collection method is needed).
 - Time-of-day view once there are enough repeated surveys.
 - Denser sampling (per-scan RSSI logging) so red cells become true dead spots rather than candidates.

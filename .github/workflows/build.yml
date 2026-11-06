@@ -13,6 +13,11 @@ on:
       - "data/campus_bbox.json"
       - "scripts/build.py"
   workflow_dispatch:
+    inputs:
+      refresh_buildings:
+        description: "Re-download building footprints from OpenStreetMap"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,6 +36,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Building footprints are fetched from OpenStreetMap only when the file is
+      # missing (first run) or when you trigger the workflow manually with
+      # "refresh_buildings" ticked.  Otherwise the committed copy is reused so
+      # routine data pushes never depend on the Overpass API being up.
+      - name: Fetch OSM building footprints
+        if: ${{ hashFiles('data/buildings.geojson') == '' || inputs.refresh_buildings == true }}
+        run: python3 scripts/fetch_buildings.py
+
       - name: Build GeoJSON from raw CSVs
         run: python3 scripts/build.py
 
@@ -38,7 +51,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed
+          git add data/processed data/buildings.geojson
           if git diff --cached --quiet; then
             echo "Processed data unchanged."
           else

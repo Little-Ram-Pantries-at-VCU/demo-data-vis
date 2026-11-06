@@ -61,6 +61,11 @@ TIERS = [
     {"id": "poor",      "label": "Poor (< −85)",          "min": -999},
 ]
 
+# A fix "belongs" to a building's perimeter if it is inside the footprint or
+# within this many metres of its outline (data/buildings.geojson, produced by
+# scripts/fetch_buildings.py).  Fixes can belong to several buildings.
+PERIMETER_M = 30
+
 # Rows with a FirstSeen date before this are GPS/clock glitches (1970-01-01).
 # They are kept (the location is still valid) but their date is set to null.
 MIN_VALID_YEAR = 2000
@@ -71,6 +76,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(ROOT, "data", "raw")
 OUT_DIR = os.path.join(ROOT, "data", "processed")
 BBOX_PATH = os.path.join(ROOT, "data", "campus_bbox.json")
+BUILDINGS_PATH = os.path.join(ROOT, "data", "buildings.geojson")
 
 REQUIRED_COLS = {"MAC", "SSID", "FirstSeen", "Frequency", "RSSI",
                  "CurrentLatitude", "CurrentLongitude"}
@@ -296,6 +302,100 @@ def build_grid(fixes, g: dict):
 
 
 # --------------------------------------------------------------------------- #
+# Buildings (optional — only if data/buildings.geojson exists)
+# --------------------------------------------------------------------------- #
+
+def _rings(geom):
+    if geom["type"] == "Polygon":
+        return geom["coordinates"]
+    if geom["type"] == "MultiPolygon":
+        return [r for poly in geom["coordinates"] for r in poly]
+    return []
+
+
+def _point_in_ring(x, y, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i]; xj, yj = ring[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi + 1e-300) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _seg_dist_m(px, py, ax, ay, bx, by, kx, ky):
+    """Distance in metres from point to segment, with lon/lat scale factors."""
+    ax, bx, px = ax * kx, bx * kx, px * kx
+    ay, by, py = ay * ky, by * ky, py * ky
+    dx, dy = bx - ax, by - ay
+    if dx == dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def assign_buildings(fixes, bbox):
+    """Tag each fix with the ids of buildings whose perimeter it falls on."""
+    if not os.path.exists(BUILDINGS_PATH):
+        print("  (no data/buildings.geojson — run scripts/fetch_buildings.py to enable the building layer)")
+        return None
+    with open(BUILDINGS_PATH) as f:
+        buildings = json.load(f)["features"]
+    mid_lat = (bbox["min_lat"] + bbox["max_lat"]) / 2
+    ky = 111_320.0
+    kx = 111_320.0 * math.cos(math.radians(mid_lat))
+    pad_lat, pad_lon = PERIMETER_M / ky, PERIMETER_M / kx
+
+    for fx in fixes:
+        fx["bld"] = []
+    for b in buildings:
+        rings = _rings(b["geometry"])
+        if not rings:
+            continue
+        xs = [p[0] for r in rings for p in r]; ys = [p[1] for r in rings for p in r]
+        w, e, s, n = min(xs) - pad_lon, max(xs) + pad_lon, min(ys) - pad_lat, max(ys) + pad_lat
+        bid = b.get("id") or b["properties"].get("id")
+        for fx in fixes:
+            if not (w <= fx["lon"] <= e and s <= fx["lat"] <= n):
+                continue
+            outer = rings[0]
+            if _point_in_ring(fx["lon"], fx["lat"], outer):
+                fx["bld"].append(bid); continue
+            near = any(
+                _seg_dist_m(fx["lon"], fx["lat"], r[i][0], r[i][1], r[i + 1][0], r[i + 1][1], kx, ky) <= PERIMETER_M
+                for r in rings for i in range(len(r) - 1))
+            if near:
+                fx["bld"].append(bid)
+    return buildings
+
+
+def build_building_stats(fixes, buildings):
+    by_id = defaultdict(list)
+    for fx in fixes:
+        for bid in fx.get("bld", []):
+            by_id[bid].append(fx)
+    out = []
+    for b in buildings:
+        bid = b.get("id") or b["properties"].get("id")
+        fxs = by_id.get(bid, [])
+        bests = [f["best"] for f in fxs if f["best"] is not None]
+        med = statistics.median(bests) if bests else None
+        props = dict(b["properties"])
+        props.update({
+            "id": bid,
+            "n_fixes": len(fxs),
+            "n_with_campus": len(bests),
+            "median_best": med,
+            "min_best": min(bests) if bests else None,
+            "tier": tier_for(med) if fxs else "nodata",
+            "dates": sorted({f["date"] for f in fxs if f["date"]}),
+        })
+        out.append({"type": "Feature", "id": bid, "geometry": b["geometry"], "properties": props})
+    return out
+
+
+# --------------------------------------------------------------------------- #
 
 def main():
     bbox = load_bbox()
@@ -310,6 +410,7 @@ def main():
     fixes = build_fixes(observations)
     g = grid_meta(bbox)
     grid = build_grid(fixes, g)
+    buildings = assign_buildings(fixes, bbox)
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -326,6 +427,18 @@ def main():
     with open(os.path.join(OUT_DIR, "grid.geojson"), "w") as f:
         json.dump({"type": "FeatureCollection", "features": grid}, f, separators=(",", ":"))
 
+    n_buildings = 0
+    bpath = os.path.join(OUT_DIR, "buildings.geojson")
+    if buildings is not None:
+        bstats = build_building_stats(fixes, buildings)
+        n_buildings = len(bstats)
+        with open(bpath, "w") as f:
+            json.dump({"type": "FeatureCollection",
+                       "attribution": "© OpenStreetMap contributors, ODbL",
+                       "features": bstats}, f, separators=(",", ":"))
+    elif os.path.exists(bpath):
+        os.remove(bpath)
+
     tier_counts = defaultdict(int)
     for c in grid:
         tier_counts[c["properties"]["tier"]] += 1
@@ -341,6 +454,8 @@ def main():
         "n_fixes": len(fixes),
         "n_fixes_with_campus": sum(1 for fx in fixes if fx["best"] is not None),
         "n_cells_surveyed": len(grid),
+        "n_buildings": n_buildings,
+        "perimeter_m": PERIMETER_M,
         "n_cells_total": g["nx"] * g["ny"],
         "cells_by_tier": dict(tier_counts),
         "date_range": [dates[0], dates[-1]] if dates else None,
@@ -354,6 +469,9 @@ def main():
     print(f"Wrote {len(fix_features)} fixes, {len(grid)} grid cells "
           f"({g['nx']}x{g['ny']} grid, {CELL_SIZE_M} m) -> {OUT_DIR}")
     print("Cells by tier:", dict(tier_counts))
+    if buildings is not None:
+        surveyed = sum(1 for b in bstats if b["properties"]["n_fixes"])
+        print(f"Buildings: {n_buildings} footprints, {surveyed} with fixes within {PERIMETER_M} m")
 
 
 if __name__ == "__main__":

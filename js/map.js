@@ -18,17 +18,20 @@
     nodata: cssVar("--tier-nodata"),
   };
 
-  let SUMMARY, FIXES, GRID;
-  let map, canvas, cellLayer, noDataLayer, fixLayer;
+  let SUMMARY, FIXES, GRID, BUILDINGS = null;
+  let map, canvas, cellLayer, noDataLayer, fixLayer, buildingLayer;
   const cellShapes = new Map(); // "ix,iy" -> L.Rectangle (reused across re-renders)
 
   // ------------------------------------------------------------------ boot
   Promise.all([
     fetch("data/processed/summary.json").then(r => r.json()),
     fetch("data/processed/fixes.geojson").then(r => r.json()),
-  ]).then(([summary, fixes]) => {
+    // Optional: only present once scripts/fetch_buildings.py has been run.
+    fetch("data/processed/buildings.geojson").then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]).then(([summary, fixes, buildings]) => {
     SUMMARY = summary;
     GRID = summary.grid;
+    BUILDINGS = buildings && buildings.features.length ? buildings : null;
     FIXES = fixes.features.map(f => Object.assign({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }, f.properties));
     initMap();
     initControls();
@@ -55,6 +58,7 @@
     canvas = L.canvas({ padding: 0.3 });
     noDataLayer = L.layerGroup().addTo(map);
     cellLayer = L.layerGroup().addTo(map);
+    buildingLayer = L.layerGroup().addTo(map);
     fixLayer = L.layerGroup();
 
     document.getElementById("cell-size").textContent = GRID.cell_size_m;
@@ -84,7 +88,15 @@
     }
     if (SUMMARY.devices.length < 2) devs.style.display = "none";
 
-    for (const id of ["f-ssid", "f-band", "f-from", "f-to", "f-min", "l-nodata", "l-fixes"]) {
+    const bsec = document.getElementById("buildings-section");
+    if (!BUILDINGS) {
+      el("l-buildings").closest("label").style.display = "none";
+      bsec.querySelector("p.muted").textContent =
+        "No building layer yet — run scripts/fetch_buildings.py, commit data/buildings.geojson and push.";
+      bsec.querySelector("table").style.display = "none";
+    }
+
+    for (const id of ["f-ssid", "f-band", "f-from", "f-to", "f-min", "l-nodata", "l-fixes", "l-buildings"]) {
       el(id).addEventListener("change", render);
     }
     devs.addEventListener("change", render);
@@ -92,7 +104,7 @@
       ssid.value = "any"; el("f-band").value = "any"; el("f-min").value = 1;
       from.value = SUMMARY.dates[0]; to.value = SUMMARY.dates[SUMMARY.dates.length - 1];
       devs.querySelectorAll("input").forEach(c => (c.checked = true));
-      el("l-nodata").checked = true; el("l-fixes").checked = false;
+      el("l-nodata").checked = true; el("l-fixes").checked = false; el("l-buildings").checked = true;
       render();
     });
 
@@ -173,6 +185,36 @@
     return SUMMARY.tiers[SUMMARY.tiers.length - 1].id;
   }
 
+  /** Per-building perimeter stats under the current filters (fix.bld is set by build.py). */
+  function aggregateBuildings(f) {
+    const by = new Map();
+    for (const fx of FIXES) {
+      if (!fx.bld || !fx.bld.length) continue;
+      if (fx.date && (fx.date < f.from || fx.date > f.to)) continue;
+      if (!f.devices.has(fx.device)) continue;
+      const b = bestFor(fx, f);
+      for (const id of fx.bld) {
+        let s = by.get(id);
+        if (!s) { s = { n: 0, bests: [], dates: new Set() }; by.set(id, s); }
+        s.n++;
+        if (b !== null) s.bests.push(b);
+        if (fx.date) s.dates.add(fx.date);
+      }
+    }
+    const out = [];
+    for (const feat of BUILDINGS.features) {
+      const s = by.get(feat.id || feat.properties.id);
+      const st = { feat, name: feat.properties.name || `(unnamed ${feat.properties.building || "building"})`,
+                   n: s ? s.n : 0, nSig: s ? s.bests.length : 0,
+                   median: s && s.bests.length ? median(s.bests) : null,
+                   min: s && s.bests.length ? Math.min(...s.bests) : null,
+                   dates: s ? [...s.dates].sort() : [] };
+      st.tier = st.n ? tierFor(st.median) : "nodata";
+      out.push(st);
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------ render
   function render() {
     const f = currentFilter();
@@ -221,7 +263,62 @@
       map.removeLayer(fixLayer);
     }
 
+    buildingLayer.clearLayers();
+    let bstats = null;
+    if (BUILDINGS && el("l-buildings").checked) {
+      bstats = aggregateBuildings(f);
+      for (const st of bstats) {
+        const color = st.tier === "nodata" ? "#52514e" : TIER_COLORS[st.tier];
+        // White casing underneath so the outline reads over same-colored cells.
+        buildingLayer.addLayer(L.geoJSON(st.feat, { interactive: false, style: {
+          renderer: canvas, color: "#ffffff", weight: st.tier === "nodata" ? 3 : 5, opacity: 0.9, fill: false,
+        }}));
+        const poly = L.geoJSON(st.feat, { style: {
+          renderer: canvas, color, weight: st.tier === "nodata" ? 1 : 2.5, opacity: 1,
+          fillColor: "#ffffff", fillOpacity: st.tier === "nodata" ? 0.15 : 0.35,
+          dashArray: st.tier === "none" ? "4 3" : null,
+        }});
+        poly.bindTooltip(buildingTooltip(st), { className: "cell-tip", sticky: true });
+        poly.on("click", () => map.fitBounds(poly.getBounds().pad(1.5), { maxZoom: 18 }));
+        buildingLayer.addLayer(poly);
+      }
+    }
+
     updateStats(cells, f);
+    if (BUILDINGS) updateBuildingTable(bstats || aggregateBuildings(f));
+  }
+
+  function buildingTooltip(st) {
+    const tier = SUMMARY.tiers.find(t => t.id === st.tier);
+    const lines = [`<b>${st.name}</b>`];
+    if (st.tier === "nodata") { lines.push(`No fixes within ${SUMMARY.perimeter_m} m of this building yet`); return lines.join("<br>"); }
+    lines.push(tier ? tier.label : "Surveyed perimeter — no campus Wi‑Fi observed");
+    if (st.median !== null) lines.push(`Median best RSSI: <b>${st.median} dBm</b> (weakest ${st.min})`);
+    lines.push(`${st.n} fixes within ${SUMMARY.perimeter_m} m, ${st.nSig} with campus Wi‑Fi`);
+    lines.push(`Dates: ${st.dates.join(", ") || "unknown"}`);
+    return lines.join("<br>");
+  }
+
+  function updateBuildingTable(bstats) {
+    const surveyed = bstats.filter(s => s.n > 0);
+    const sec = el("buildings-section");
+    sec.querySelector("p.muted").textContent =
+      `${surveyed.length} of ${bstats.length} OSM footprints have fixes within ${SUMMARY.perimeter_m} m. ` +
+      `Weakest median first; rows with no campus Wi‑Fi at all come last. Click to zoom.`;
+    const tbody = sec.querySelector("tbody");
+    tbody.innerHTML = "";
+    surveyed.sort((a, b) => {
+      if (a.median === null && b.median === null) return b.n - a.n;
+      if (a.median === null) return 1;
+      if (b.median === null) return -1;
+      return a.median - b.median;
+    }).slice(0, 15).forEach(st => {
+      const tr = document.createElement("tr");
+      const sw = `<span class="swatch-inline" style="background:${st.tier === "none" ? TIER_COLORS.none : TIER_COLORS[st.tier]}"></span>`;
+      tr.innerHTML = `<td>${sw}${escapeHtml(st.name)}</td><td>${st.median === null ? "—" : st.median}</td><td>${st.n}</td>`;
+      tr.addEventListener("click", () => map.fitBounds(L.geoJSON(st.feat).getBounds().pad(1.5), { maxZoom: 18 }));
+      tbody.append(tr);
+    });
   }
 
   function styleFor(c) {
@@ -287,6 +384,7 @@
     const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   }
+  function escapeHtml(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   function pct(n, d) { return d ? Math.round(100 * n / d) + "%" : "—"; }
   function el(id) { return document.getElementById(id); }
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }

@@ -43,6 +43,7 @@
     <fieldset id="f-devices" class="devices"><legend>Devices</legend></fieldset>
     <label class="check"><input type="checkbox" id="l-nodata" checked> Show unsurveyed cells</label>
     <label class="check"><input type="checkbox" id="l-fixes"> Show individual fixes</label>
+    <label class="check"><input type="checkbox" id="l-buildings" checked> Show buildings</label>
     <button id="f-reset" type="button">Reset</button>
   </section>
 
@@ -59,6 +60,14 @@
         <thead><tr><th>Median dBm</th><th>Fixes</th><th>Dates</th></tr></thead>
         <tbody></tbody>
       </table>
+      <section id="buildings-section">
+        <h2>Buildings by perimeter signal</h2>
+        <p class="muted small"></p>
+        <table class="worst" id="buildings">
+          <thead><tr><th>Building</th><th>Median dBm</th><th>Fixes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
       <details>
         <summary>How to read this map</summary>
         <p>Each square is a <span id="cell-size">25</span> m grid cell. Its color is the <strong>median</strong> of
@@ -67,6 +76,9 @@
           no VCU SafeNet / eduroam / Guest access point there. WiGLE usually records each
           network once per run, so this is a <em>candidate</em> dead spot, not proof — re‑survey it.</p>
         <p>Gray cells have never been surveyed. That is the team's to‑do list.</p>
+        <p><strong>Buildings</strong> (OpenStreetMap footprints) are outlined in the color of the median signal
+          from all fixes inside or within 30 m of the footprint — a rough "how good is Wi‑Fi right outside this
+          building" score. Hollow gray outlines have no nearby fixes yet.</p>
         <p>Measurements are from phones on sidewalks and say little about indoor coverage.
           GPS accuracy is ~8 m, so cells smaller than this grid would be misleading.</p>
       </details>

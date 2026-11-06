@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-06T18:05:16Z",
+  "generated_at": "2026-11-06T18:16:41Z",
   "bbox": {
     "min_lat": 37.536,
     "max_lat": 37.557,
@@ -62,6 +62,8 @@
   "n_fixes": 3814,
   "n_fixes_with_campus": 1108,
   "n_cells_surveyed": 887,
+  "n_buildings": 0,
+  "perimeter_m": 30,
   "n_cells_total": 11374,
   "cells_by_tier": {
     "none": 514,

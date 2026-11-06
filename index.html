@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VCU Campus Wi-Fi Coverage Map</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <h1>VCU Campus Wi-Fi Coverage</h1>
+      <p class="sub" id="subtitle">Loading survey data…</p>
+    </div>
+    <nav class="links">
+      <a href="data/processed/grid.geojson" download>grid.geojson</a>
+      <a href="data/processed/fixes.geojson" download>fixes.geojson</a>
+      <a href="https://github.com/Little-Ram-Pantries-at-VCU/demo-data-vis" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <label>Network
+      <select id="f-ssid"><option value="any">Any campus SSID</option></select>
+    </label>
+    <label>Band
+      <select id="f-band">
+        <option value="any">Any band</option>
+        <option value="2.4">2.4 GHz</option>
+        <option value="5">5 GHz</option>
+      </select>
+    </label>
+    <label>From
+      <select id="f-from"></select>
+    </label>
+    <label>To
+      <select id="f-to"></select>
+    </label>
+    <label>Min fixes / cell
+      <input id="f-min" type="number" min="1" value="1" step="1">
+    </label>
+    <fieldset id="f-devices" class="devices"><legend>Devices</legend></fieldset>
+    <label class="check"><input type="checkbox" id="l-nodata" checked> Show unsurveyed cells</label>
+    <label class="check"><input type="checkbox" id="l-fixes"> Show individual fixes</label>
+    <button id="f-reset" type="button">Reset</button>
+  </section>
+
+  <main class="layout">
+    <div id="map" role="application" aria-label="Coverage map"></div>
+    <aside class="panel">
+      <h2>Legend</h2>
+      <ul class="legend" id="legend"></ul>
+      <h2>Stats <span class="muted">(current filters)</span></h2>
+      <dl class="stats" id="stats"></dl>
+      <h2>Weakest surveyed cells</h2>
+      <p class="muted small">Cells with campus Wi‑Fi observed, lowest median first. Click a row to zoom.</p>
+      <table class="worst" id="worst">
+        <thead><tr><th>Median dBm</th><th>Fixes</th><th>Dates</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <details>
+        <summary>How to read this map</summary>
+        <p>Each square is a <span id="cell-size">25</span> m grid cell. Its color is the <strong>median</strong> of
+          the strongest campus‑network signal seen at each GPS fix inside it.</p>
+        <p><strong>No campus observation</strong> means the team walked through the cell but WiGLE logged
+          no VCU SafeNet / eduroam / Guest access point there. WiGLE usually records each
+          network once per run, so this is a <em>candidate</em> dead spot, not proof — re‑survey it.</p>
+        <p>Gray cells have never been surveyed. That is the team's to‑do list.</p>
+        <p>Measurements are from phones on sidewalks and say little about indoor coverage.
+          GPS accuracy is ~8 m, so cells smaller than this grid would be misleading.</p>
+      </details>
+    </aside>
+  </main>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/map.js"></script>
+</body>
+</html>

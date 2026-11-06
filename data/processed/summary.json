@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-11-06T18:05:16Z",
+  "bbox": {
+    "min_lat": 37.536,
+    "max_lat": 37.557,
+    "min_lon": -77.458,
+    "max_lon": -77.424
+  },
+  "bbox_name": "VCU Monroe Park + MCV campuses",
+  "grid": {
+    "cell_size_m": 25,
+    "origin_lat": 37.536,
+    "origin_lon": -77.458,
+    "dlat": 0.0002245777937477542,
+    "dlon": 0.0002832506001978837,
+    "nx": 121,
+    "ny": 94
+  },
+  "campus_ssids": {
+    "SafeNet": "VCU SafeNet Wireless",
+    "eduroam": "eduroam",
+    "Guest": "VCU Guest Wireless"
+  },
+  "tiers": [
+    {
+      "id": "excellent",
+      "label": "Excellent (\u2265 \u221265 dBm)",
+      "min": -65
+    },
+    {
+      "id": "good",
+      "label": "Good (\u221265 to \u221275)",
+      "min": -75
+    },
+    {
+      "id": "fair",
+      "label": "Fair (\u221275 to \u221285)",
+      "min": -85
+    },
+    {
+      "id": "poor",
+      "label": "Poor (< \u221285)",
+      "min": -999
+    }
+  ],
+  "input": {
+    "files": [
+      {
+        "file": "2026-11-06_campus_wigle-phone-unknown.csv",
+        "export_date": "2026-11-06",
+        "area": "campus",
+        "device": "wigle-phone-unknown",
+        "rows_kept": 34790
+      }
+    ],
+    "rows_read": 49010,
+    "duplicates": 237,
+    "outside_bbox": 13983,
+    "bad_rows": 0,
+    "kept": 34790
+  },
+  "n_fixes": 3814,
+  "n_fixes_with_campus": 1108,
+  "n_cells_surveyed": 887,
+  "n_cells_total": 11374,
+  "cells_by_tier": {
+    "none": 514,
+    "good": 128,
+    "fair": 152,
+    "excellent": 77,
+    "poor": 16
+  },
+  "date_range": [
+    "2026-09-14",
+    "2026-11-04"
+  ],
+  "dates": [
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-21",
+    "2026-10-19",
+    "2026-10-20",
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23",
+    "2026-10-25",
+    "2026-10-26",
+    "2026-10-28",
+    "2026-10-31",
+    "2026-11-02",
+    "2026-11-04"
+  ],
+  "devices": [
+    "wigle-phone-unknown"
+  ],
+  "areas": [
+    "campus"
+  ]
+}
